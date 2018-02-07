@@ -61,7 +61,7 @@ class Glisten(object):
 
     def start(self):
         # SSH server
-        self.ssh_server = self._start_listening_sshd()
+        self.ssh_server = self._start_sshd()
         self.loop.run_until_complete(self.ssh_server)
 
         # http server
@@ -79,30 +79,23 @@ class Glisten(object):
             server_host_keys=['ssh_host_key'],
             session_factory=self._handle_ssh_session)
 
-    async def _start_listening_sshd(self):
-        return await asyncssh.create_server(
-            SSHServer, '', 8022,
-            server_host_keys=['ssh_host_key'],
-            process_factory=self._handle_ssh_client)
-
     async def _handle_ssh_session(self, stdin, stdout, stderr):
         try:
             self.clients.append((stdin, stdout, stderr))
-            stdout.write('Welcome to my SSH server, %s!\n' % 'human unit')
+
+            try:
+                async for line in stdin:
+                    line = line.rstrip('\n')
+                    if line:
+                        print("line: '{}'".format(line))
+                        pass
+            except asyncssh.BreakReceived:
+                pass
+
             stdout.channel.exit(0)
+
         finally:
             self.clients.remove((stdin, stdout, stderr))
-
-    async def _handle_ssh_client(self, process):
-        try:
-            async for line in process.stdin:
-                line = line.rstrip('\n')
-                if line:
-                    pass
-        except asyncssh.BreakReceived:
-            pass
-
-        process.exit(0)
 
     async def _handle_root_get(self, request):
         name = request.match_info.get('name', "Anonymous")
@@ -112,6 +105,8 @@ class Glisten(object):
     async def _handle_webhook_post(self, request):
         # WARNING: don't do this if you plan to receive large files!
         project_name = await request.json()
+
+        print("project_name: {}".format(project_name))
 
         for client in self.clients:
             client[1].write("Event: {0}\n".format(project_name['project_name']))
