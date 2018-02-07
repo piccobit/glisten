@@ -61,7 +61,7 @@ class Glisten(object):
 
     def start(self):
         # SSH server
-        self.ssh_server = self._start_sshd()
+        self.ssh_server = self._start_listening_sshd()
         self.loop.run_until_complete(self.ssh_server)
 
         # http server
@@ -79,6 +79,12 @@ class Glisten(object):
             server_host_keys=['ssh_host_key'],
             session_factory=self._handle_ssh_session)
 
+    async def _start_listening_sshd(self):
+        return await asyncssh.create_server(
+            SSHServer, '', 8022,
+            server_host_keys=['ssh_host_key'],
+            process_factory=self._handle_ssh_client)
+
     async def _handle_ssh_session(self, stdin, stdout, stderr):
         try:
             self.clients.append((stdin, stdout, stderr))
@@ -86,6 +92,17 @@ class Glisten(object):
             stdout.channel.exit(0)
         finally:
             self.clients.remove((stdin, stdout, stderr))
+
+    async def _handle_ssh_client(self, process):
+        try:
+            async for line in process.stdin:
+                line = line.rstrip('\n')
+                if line:
+                    pass
+        except asyncssh.BreakReceived:
+            pass
+
+        process.exit(0)
 
     async def _handle_root_get(self, request):
         name = request.match_info.get('name', "Anonymous")
